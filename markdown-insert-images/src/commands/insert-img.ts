@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import state from '../store';
 
 export function insertImgPath() {
@@ -35,23 +36,71 @@ async function openImgPicker(textEditor: vscode.TextEditor, workspace: vscode.Wo
   if (!state.defaultUri || !state.defaultUri[workspaceName]) {
     state.defaultUri[workspaceName] = workspace.uri;
   }
+  /**
+   * workspace 路径
+   */
   const rootPath = workspace.uri.fsPath;
-  const selectedFilePath = await vscode.window.showOpenDialog({
+
+  /**
+   * 选择的文件列表
+   */
+  const selectedFileUris = await vscode.window.showOpenDialog({
     defaultUri: state.defaultUri[workspace.name],
     canSelectMany: true,
     filters: {
       images: ['png', 'jpg', 'jpeg', 'svg'],
     },
   });
-  if (!selectedFilePath) {
+  if (!selectedFileUris) {
     return;
   }
+
+  const firstFile = selectedFileUris[0];
+  const firstFilePath = firstFile.fsPath;
+  const beyondWorkspace = firstFilePath.indexOf(rootPath) === -1;
+  let isBeyondFilesCopied = false;
+  if (beyondWorkspace) {
+    // 不是当前workspace下的路径
+    const result = await vscode.window.showWarningMessage(
+      '文件不在当前工程下，拷贝到当前工程下...',
+      'Confirm',
+      'Cancel'
+    );
+    if (result === 'Confirm') {
+      isBeyondFilesCopied = true;
+      selectedFileUris.forEach((fileUri) => {
+        const filePath = fileUri.fsPath;
+        const fileName = path.basename(filePath);
+        try {
+          fs.copyFileSync(filePath, path.join(rootPath, fileName));
+        } catch (err) {
+          vscode.window.showErrorMessage(err.message);
+          isBeyondFilesCopied = false;
+        }
+      });
+    }
+  }
+
+  if (beyondWorkspace && !isBeyondFilesCopied) {
+    return;
+  }
+
+  /**
+   * 待插入的文本
+   */
   let snippetStr = '';
-  selectedFilePath.forEach((fileUri, index) => {
+
+  selectedFileUris.forEach((fileUri, index) => {
     const filePath = fileUri.fsPath;
-    const relativePath = path.relative(rootPath, filePath);
-    const unixPath = '/' + relativePath.replace(/\\/g, '/');
-    const fileName = path.basename(filePath);
+    let unixPath = '';
+    let fileName = path.basename(filePath);
+    if (beyondWorkspace) {
+      unixPath = `/${fileName}`;
+    } else {
+      // 处于当前workspace下的路径
+      const relativePath = path.relative(rootPath, filePath);
+      unixPath = '/' + relativePath.replace(/\\/g, '/');
+    }
 
     // 记住上一次的文件夹
     const fileDir = path.dirname(filePath);
