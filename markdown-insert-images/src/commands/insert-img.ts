@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import state from '../store';
 
 export function insertImgPath() {
   return vscode.commands.registerTextEditorCommand(
@@ -30,9 +31,13 @@ export function insertImgPath() {
  * @param workspace
  */
 async function openImgPicker(textEditor: vscode.TextEditor, workspace: vscode.WorkspaceFolder) {
+  const workspaceName = workspace.name;
+  if (!state.defaultUri || !state.defaultUri[workspaceName]) {
+    state.defaultUri[workspaceName] = workspace.uri;
+  }
   const rootPath = workspace.uri.fsPath;
   const selectedFilePath = await vscode.window.showOpenDialog({
-    defaultUri: workspace.uri,
+    defaultUri: state.defaultUri[workspace.name],
     canSelectMany: true,
     filters: {
       images: ['png', 'jpg', 'jpeg', 'svg'],
@@ -47,6 +52,11 @@ async function openImgPicker(textEditor: vscode.TextEditor, workspace: vscode.Wo
     const relativePath = path.relative(rootPath, filePath);
     const unixPath = '/' + relativePath.replace(/\\/g, '/');
     const fileName = path.basename(filePath);
+
+    // 记住上一次的文件夹
+    const fileDir = path.dirname(filePath);
+    const fileDirUri = vscode.Uri.file(fileDir);
+    state.defaultUri[workspaceName] = fileDirUri;
 
     snippetStr += `![\${${index + 1}:${fileName}}](${unixPath})\n\n`;
   });
