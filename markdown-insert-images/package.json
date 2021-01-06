@@ -14,6 +14,12 @@
     "markdown",
     "images"
   ],
+  "icon": "images/icon.png",
+  "homepage": "https://github.com/liuwenzhuang/lwz-vscode-extensions/blob/main/markdown-insert-images/README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liuwenzhuang/lwz-vscode-extensions.git"
+  },
   "activationEvents": [
     "onCommand:markdown-insert-images.insertImgPath"
   ],
