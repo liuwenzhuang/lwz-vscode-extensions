@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "liuwenzhuang",
   "engines": {
-    "vscode": "^1.32.0"
+    "vscode": "^1.52.0"
   },
   "categories": [
     "Other"
