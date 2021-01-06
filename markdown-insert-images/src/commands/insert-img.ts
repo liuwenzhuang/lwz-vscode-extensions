@@ -57,34 +57,99 @@ async function openImgPicker(textEditor: vscode.TextEditor, workspace: vscode.Wo
 
   const firstFile = selectedFileUris[0];
   const firstFilePath = firstFile.fsPath;
+  /**
+   * 当前文件路径相对于workspace根路径的相对路径，用于插入的文本
+   */
+  let relativePath = path.relative(rootPath, firstFilePath);
+
   const beyondWorkspace = firstFilePath.indexOf(rootPath) === -1;
-  let isBeyondFilesCopied = false;
+  let copyResult:
+    | {
+        isCopied: boolean;
+        relativePath: string;
+      }
+    | undefined = undefined;
   if (beyondWorkspace) {
-    // 不是当前workspace下的路径
-    const result = await vscode.window.showWarningMessage(
-      '文件不在当前工程下，拷贝到当前工程下...',
-      'Confirm',
-      'Cancel'
-    );
-    if (result === 'Confirm') {
-      isBeyondFilesCopied = true;
-      selectedFileUris.forEach((fileUri) => {
-        const filePath = fileUri.fsPath;
-        const fileName = path.basename(filePath);
-        try {
-          fs.copyFileSync(filePath, path.join(rootPath, fileName));
-        } catch (err) {
-          vscode.window.showErrorMessage(err.message);
-          isBeyondFilesCopied = false;
-        }
-      });
+    copyResult = await copyFilesToWorkspace(workspace.uri, selectedFileUris);
+  }
+  if (copyResult) {
+    if (!copyResult.isCopied) {
+      return;
     }
+    relativePath = copyResult.relativePath;
   }
 
-  if (beyondWorkspace && !isBeyondFilesCopied) {
+  // 记住上一次打开的文件夹
+  state.defaultUri[workspaceName] = vscode.Uri.file(path.dirname(firstFilePath));
+
+  // 如果选择的是根目录下的文件，relativePath就是文件名
+  if (relativePath.indexOf(path.sep) === -1) {
+    relativePath = '/';
+  } else {
+    relativePath = '/' + relativePath.replace(/\\/g, '/'); // 插入文档中需转换为unix路径
+  }
+
+  textEditor.insertSnippet(getSnippets(relativePath, selectedFileUris));
+}
+
+/**
+ * 将workspace外的文件复制到当前workspace下的某文件夹
+ * @param workspaceUri
+ * @param selectedFileUris
+ */
+async function copyFilesToWorkspace(workspaceUri: vscode.Uri, selectedFileUris: vscode.Uri[]) {
+  const rootPath = workspaceUri.fsPath;
+  const result = await vscode.window.showWarningMessage(
+    '文件不在当前工程下，复制到当前工程下的文件夹？',
+    'Confirm',
+    'Cancel'
+  );
+  if (result !== 'Confirm') {
     return;
   }
+  const copyDestUris = await vscode.window.showOpenDialog({
+    title: '所选文件将复制到此文件夹下',
+    defaultUri: workspaceUri,
+    canSelectMany: false,
+    canSelectFiles: false,
+    canSelectFolders: true,
+    openLabel: '复制',
+  });
+  if (!copyDestUris) {
+    return;
+  }
+  const copyDestUri = copyDestUris[0];
+  const copyDestPath = copyDestUri.fsPath;
+  if (copyDestPath.indexOf(rootPath) === -1) {
+    vscode.window.showErrorMessage('请选择当前工程下的文件夹');
+    return;
+  }
+  let isCopied = true;
+  let relativePath = '';
+  selectedFileUris.forEach((fileUri) => {
+    const filePath = fileUri.fsPath;
+    const fileName = path.basename(filePath);
+    try {
+      const destFilePath = path.join(copyDestPath, fileName);
+      relativePath = path.relative(rootPath, destFilePath); // 重新计算相对路径
+      fs.copyFileSync(filePath, destFilePath);
+    } catch (err) {
+      vscode.window.showErrorMessage(err.message);
+      isCopied = false;
+    }
+  });
+  return {
+    isCopied,
+    relativePath,
+  };
+}
 
+/**
+ * 生成插入的文档片段
+ * @param relativePath
+ * @param selectedFileUris
+ */
+function getSnippets(relativePath: string, selectedFileUris: vscode.Uri[]) {
   /**
    * 待插入的文本
    */
@@ -92,24 +157,11 @@ async function openImgPicker(textEditor: vscode.TextEditor, workspace: vscode.Wo
 
   selectedFileUris.forEach((fileUri, index) => {
     const filePath = fileUri.fsPath;
-    let unixPath = '';
     let fileName = path.basename(filePath);
-    if (beyondWorkspace) {
-      unixPath = `/${fileName}`;
-    } else {
-      // 处于当前workspace下的路径
-      const relativePath = path.relative(rootPath, filePath);
-      unixPath = '/' + relativePath.replace(/\\/g, '/');
-    }
+    const insertFilePath = path.posix.join(relativePath, fileName);
 
-    // 记住上一次的文件夹
-    const fileDir = path.dirname(filePath);
-    const fileDirUri = vscode.Uri.file(fileDir);
-    state.defaultUri[workspaceName] = fileDirUri;
-
-    snippetStr += `![\${${index + 1}:${fileName}}](${unixPath})\n\n`;
+    snippetStr += `![\${${index + 1}:${fileName}}](${insertFilePath})\n\n`;
   });
   snippetStr += '$0';
-  const snippet = new vscode.SnippetString(snippetStr);
-  textEditor.insertSnippet(snippet);
+  return new vscode.SnippetString(snippetStr);
 }
