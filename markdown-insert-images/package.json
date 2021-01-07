@@ -2,7 +2,7 @@
   "name": "markdown-insert-images",
   "displayName": "markdown-insert-images",
   "description": "Pick images and insert into markdown files, support multi select.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "liuwenzhuang",
   "engines": {
     "vscode": "^1.52.0"
